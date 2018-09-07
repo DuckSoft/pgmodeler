@@ -323,10 +323,7 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags) : QMainWindow(par
 	connect(model_valid_wgt, SIGNAL(s_fixApplied()), this, SLOT(removeOperations()), Qt::QueuedConnection);
 	connect(model_valid_wgt, SIGNAL(s_graphicalObjectsUpdated()), model_objs_wgt, SLOT(updateObjectsView()), Qt::QueuedConnection);
 
-	connect(&tmpmodel_save_timer, SIGNAL(timeout()), &tmpmodel_thread, SLOT(start()));
-	connect(&tmpmodel_thread, SIGNAL(started()), this, SLOT(saveTemporaryModels()));
-	connect(&tmpmodel_thread, &QThread::started, [&](){ tmpmodel_thread.setPriority(QThread::HighPriority); });
-
+	connect(&tmpmodel_save_timer, SIGNAL(timeout()), this, SLOT(saveTemporaryModels()));
 	models_tbw_parent->resize(QSize(models_tbw_parent->maximumWidth(), models_tbw_parent->height()));
 
 	//Forcing the splitter that handles the bottom widgets to resize its children to their minimum size
@@ -343,9 +340,6 @@ MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags) : QMainWindow(par
 	updateRecentModelsMenu();
 	configureSamplesMenu();
 	applyConfigurations();
-
-	//Temporary models are saved every five minutes
-	tmpmodel_save_timer.setInterval(300000);
 
 	QList<QAction *> actions=general_tb->actions();
 	QToolButton *btn=nullptr;
@@ -545,7 +539,6 @@ void MainWindow::stopTimers(bool value)
 	{
 		tmpmodel_save_timer.stop();
 		model_save_timer.stop();
-		tmpmodel_thread.quit();
 	}
 	else
 	{
@@ -603,7 +596,6 @@ void MainWindow::closeEvent(QCloseEvent *event)
 		//Stops the saving timers as well the temp. model saving thread before close pgmodeler
 		model_save_timer.stop();
 		tmpmodel_save_timer.stop();
-		tmpmodel_thread.quit();
 		plugins_menu->clear();
 
 		//If not in demo version there is no confirmation before close the software
@@ -765,10 +757,8 @@ void MainWindow::saveTemporaryModels(void)
 				model=dynamic_cast<ModelWidget *>(models_tbw->widget(i));
 				bg_saving_pb->setValue(((i+1)/static_cast<float>(count)) * 100);
 
-				if(model->isModified() || !QFileInfo(model->getTempFilename()).exists())
+				if(model->isModified() /*|| !QFileInfo(model->getTempFilename()).exists() */)
 					model->getDatabaseModel()->saveModel(model->getTempFilename(), SchemaParser::XML_DEFINITION);
-
-				QThread::msleep(200);
 			}
 
 			bg_saving_pb->setValue(100);
@@ -777,14 +767,14 @@ void MainWindow::saveTemporaryModels(void)
 			QApplication::restoreOverrideCursor();
 		}
 
-		tmpmodel_thread.quit();		
+		tmpmodel_save_timer.start();
 	}
 	catch(Exception &e)
 	{
 		QApplication::restoreOverrideCursor();
 		Messagebox msg_box;
-		tmpmodel_thread.quit();
 		msg_box.show(e);
+		tmpmodel_save_timer.start();
 	}
 #endif
 }
@@ -1019,12 +1009,14 @@ void MainWindow::setCurrentModel(void)
 	models_tbw->setCurrentIndex(model_nav_wgt->getCurrentIndex());
 	current_model=dynamic_cast<ModelWidget *>(models_tbw->currentWidget());
 	action_arrange_objects->setEnabled(current_model != nullptr);
+	sel_objs_rect.setCoords(0,0,0,0);
 
 	if(current_model)
 	{
 		QToolButton *tool_btn=nullptr;
 		QList<QToolButton *> btns;
 		QFont font;
+		GeneralConfigWidget *conf_wgt=dynamic_cast<GeneralConfigWidget *>(configuration_form->getConfigurationWidget(ConfigurationForm::GENERAL_CONF_WGT));
 
 		current_model->setFocus(Qt::OtherFocusReason);
 		current_model->cancelObjectAddition();
@@ -1080,7 +1072,8 @@ void MainWindow::setCurrentModel(void)
 		else
 			this->setWindowTitle(window_title + QString(" - ") + QDir::toNativeSeparators(current_model->getFilename()));
 
-		//connect(current_model, SIGNAL(s_manipulationCanceled(void)),this, SLOT(updateDockWidgets(void)), Qt::UniqueConnection);
+		enableTempModelsSavingPostponement(current_model, conf_wgt->temp_model_saving_postpone_chk->isChecked());
+
 		connect(current_model, SIGNAL(s_manipulationCanceled(void)),oper_list_wgt, SLOT(updateOperationList(void)), Qt::UniqueConnection);
 		connect(current_model, SIGNAL(s_objectsMoved(void)),oper_list_wgt, SLOT(updateOperationList(void)), Qt::UniqueConnection);
 		connect(current_model, SIGNAL(s_objectModified(void)),this, SLOT(updateDockWidgets(void)), Qt::UniqueConnection);
@@ -1293,6 +1286,10 @@ void MainWindow::applyConfigurations(void)
 			model_save_timer.start();
 		}
 
+		//Temporary models are saved every autosave_interval/2 or, if not defined, on every five minutes
+		tmpmodel_save_timer.setInterval(model_save_timer.interval() != 0 ? model_save_timer.interval() / 2 : 300000);
+		postponeTempModelsSaving();
+
 		//Force the update of all opened models
 		count=models_tbw->count();
 		for(i=0; i < count; i++)
@@ -1301,15 +1298,43 @@ void MainWindow::applyConfigurations(void)
 			model->updateObjectsOpacity();
 			model->db_model->setObjectsModified();
 			model->update();
+			enableTempModelsSavingPostponement(model, conf_wgt->temp_model_saving_postpone_chk->isChecked());
 		}
 
 		updateConnections();
-		sql_tool_wgt->configureSnippets();		
+		sql_tool_wgt->configureSnippets();
 	}
 
 	sql_tool_wgt->updateTabs();
 }
 
+void MainWindow::enableTempModelsSavingPostponement(ModelWidget *model, bool enable)
+{
+	if(!model) return;
+
+	if(!enable)
+	{
+		disconnect(model, SIGNAL(s_objectsMoved(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_objectModified(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_objectCreated(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_objectRemoved(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_objectManipulated(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_objectModified(void)), this, SLOT(postponeTempModelsSaving()));
+		disconnect(model, SIGNAL(s_sceneInteracted(int,QRectF)), this, SLOT(postponeTempModelsSaving(int,QRectF)));
+		disconnect(model, SIGNAL(s_sceneInteracted(BaseObjectView*)), this, SLOT(postponeTempModelsSaving(BaseObjectView*)));
+	}
+	else
+	{
+		connect(model, SIGNAL(s_objectsMoved(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_objectModified(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_objectCreated(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_objectRemoved(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_objectManipulated(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_objectModified(void)), this, SLOT(postponeTempModelsSaving()), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_sceneInteracted(int,QRectF)), this, SLOT(postponeTempModelsSaving(int,QRectF)), Qt::UniqueConnection);
+		connect(model, SIGNAL(s_sceneInteracted(BaseObjectView*)), this, SLOT(postponeTempModelsSaving(BaseObjectView*)), Qt::UniqueConnection);
+	}
+}
 
 void MainWindow::saveAllModels(void)
 {
@@ -2035,4 +2060,41 @@ void MainWindow::toggleCompactView(void)
 	}
 
 	QApplication::restoreOverrideCursor();
+}
+
+void MainWindow::postponeTempModelsSaving(void)
+{
+	tmpmodel_save_timer.stop();
+	tmpmodel_save_timer.start();
+}
+
+void MainWindow::postponeTempModelsSaving(int obj_count, QRectF obj_rect)
+{
+	QPointF pnt = sel_objs_rect.topLeft() - obj_rect.topLeft();
+
+	//If there are selected objects and they are being moved over the canvas
+	if(obj_count > 0 && sel_objs_rect.isValid() && pnt != QPointF(0,0))
+		postponeTempModelsSaving();
+
+	if(obj_count == 0)
+		sel_objs_rect.setCoords(0,0,0,0);
+	else
+		sel_objs_rect = obj_rect;
+}
+
+void MainWindow::postponeTempModelsSaving(BaseObjectView *object)
+{
+	if(!object)
+		sel_objs_rect.setCoords(0,0,0,0);
+	else
+	{
+		QRectF obj_rect = QRectF(object->pos(), object->boundingRect().size());
+		QPointF pnt = sel_objs_rect.topLeft() - obj_rect.topLeft();
+
+		//If there is one selected object and it is being moved over the canvas
+		if(sel_objs_rect.isValid() && pnt != QPointF(0,0))
+			postponeTempModelsSaving();
+
+		sel_objs_rect = obj_rect;
+	}
 }

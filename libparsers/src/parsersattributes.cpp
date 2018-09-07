@@ -380,6 +380,7 @@ namespace ParsersAttributes {
 	PORTRAIT=QString("portrait"),
 	POSITION_INFO=QString("pos-info"),
 	POSITION=QString("position"),
+	POSTPONE_TMP_MODELS_SAVING=QString("postpone-tmp-models-saving"),
 	PRECISION=QString("precision"),
 	PREDICATE=QString("predicate"),
 	PREFERRED=QString("preferred"),

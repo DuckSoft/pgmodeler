@@ -73,6 +73,9 @@ class MainWindow: public QMainWindow, public Ui::MainWindow {
 		PENDING_EXPORT_OPER=3,
 		PENDING_DIFF_OPER=4;
 
+		//! \brief This attribute is used to control the postponement of the temp. models saving based upon interactions over the canvas
+		QRectF sel_objs_rect;
+
 		unsigned pending_op;
 
 		AboutWidget *about_wgt;
@@ -87,9 +90,6 @@ class MainWindow: public QMainWindow, public Ui::MainWindow {
 
 		//! \brief Widget used to navigate through the opened models.
 		ModelNavigationWidget *model_nav_wgt;
-
-		//! \brief Thread that controls temporary model file savings
-		QThread tmpmodel_thread;
 
 		//! \brief Timer used for auto saving the model and temporary model.
 		QTimer model_save_timer,	tmpmodel_save_timer;
@@ -169,6 +169,8 @@ class MainWindow: public QMainWindow, public Ui::MainWindow {
 
 		//! \brief Shows a error dialog informing that the model demands a fix after the error ocurred when loading the filename.
 		void showFixMessage(Exception &e, const QString &filename);
+
+		void enableTempModelsSavingPostponement(ModelWidget *model, bool enable);
 
 	public:
 		MainWindow(QWidget *parent = 0, Qt::WindowFlags flags = 0);
@@ -294,6 +296,15 @@ class MainWindow: public QMainWindow, public Ui::MainWindow {
 		void restoreTemporaryModels(void);
 		void arrangeObjects(void);
 		void toggleCompactView(void);
+
+		//! \brief Postpone the temporary model saving (basically stops and starts the timer again)
+		void postponeTempModelsSaving(void);
+
+		//! \brief Postpone the temporary model saving by detecting that there're objects selected on the model and they're being moved
+		void postponeTempModelsSaving(int obj_count, QRectF obj_rect);
+
+		//! \brief Postpone the temporary model saving by detecting that there's an object selected on the model and it's being moved
+		void postponeTempModelsSaving(BaseObjectView *object);
 };
 
 #endif

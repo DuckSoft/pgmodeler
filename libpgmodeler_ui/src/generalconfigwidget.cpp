@@ -130,7 +130,8 @@ GeneralConfigWidget::GeneralConfigWidget(QWidget * parent) : BaseConfigWidget(pa
 	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::SOURCE_EDITOR_APP]=QString();
 	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::UI_LANGUAGE]=QString();
 	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::USE_CURVED_LINES]=QString();
-	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::	SAVE_RESTORE_GEOMETRY]=QString();
+	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::SAVE_RESTORE_GEOMETRY]=QString();
+	config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::POSTPONE_TMP_MODELS_SAVING]=QString();
 
 	simp_obj_creation_ht=new HintTextWidget(simp_obj_creation_hint, this);
 	simp_obj_creation_ht->setText(simple_obj_creation_chk->statusTip());
@@ -182,6 +183,9 @@ GeneralConfigWidget::GeneralConfigWidget(QWidget * parent) : BaseConfigWidget(pa
 
 	use_curved_lines_ht=new HintTextWidget(use_curved_lines_hint, this);
 	use_curved_lines_ht->setText(use_curved_lines_chk->statusTip());
+
+	temp_model_saving_postpone_ht=new HintTextWidget(temp_model_saving_postpone_hint, this);
+	temp_model_saving_postpone_ht->setText(temp_model_saving_postpone_chk->statusTip());
 
 	selectPaperSize();
 
@@ -334,6 +338,8 @@ void GeneralConfigWidget::loadConfiguration(void)
 
 		save_restore_geometry_chk->setChecked(config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::SAVE_RESTORE_GEOMETRY]==ParsersAttributes::_TRUE_);
 		reset_sizes_tb->setEnabled(save_restore_geometry_chk->isChecked());
+
+		temp_model_saving_postpone_chk->setChecked(config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::POSTPONE_TMP_MODELS_SAVING]==ParsersAttributes::_TRUE_);
 
 		int ui_idx = ui_language_cmb->findData(config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::UI_LANGUAGE]);
 		ui_language_cmb->setCurrentIndex(ui_idx >= 0 ? ui_idx : 0);
@@ -522,6 +528,7 @@ void GeneralConfigWidget::saveConfiguration(void)
 
 		config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::COMPACT_VIEW]=(BaseObjectView::isCompactViewEnabled() ? ParsersAttributes::_TRUE_ : QString());
 		config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::SAVE_RESTORE_GEOMETRY]=(save_restore_geometry_chk->isChecked() ? ParsersAttributes::_TRUE_ : QString());
+		config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::POSTPONE_TMP_MODELS_SAVING]=(temp_model_saving_postpone_chk->isChecked() ? ParsersAttributes::_TRUE_ : QString());
 
 		config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::_FILE_]=QString();
 		config_params[ParsersAttributes::CONFIGURATION][ParsersAttributes::RECENT_MODELS]=QString();
